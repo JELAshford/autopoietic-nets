@@ -2,12 +2,9 @@
 With euclidean neighborhood
 instead of Moore's
 
-This script is the one which
-leads to the most interesting
-behaviour, namely to that
-similar to autopoiesis
-(although it's still far from it)
+Second-order CA
 """
+
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -17,70 +14,84 @@ from matplotlib.animation import FuncAnimation
 Defining gates, behaviour needs
 to be changed
 """
+
+
 def AND(inputs):
     return np.all(inputs == 1).astype(int)
+
 
 def OR(inputs):
     return np.any(inputs == 1).astype(int)
 
+
 def XOR(inputs):
     return (np.sum(inputs) % 2).astype(int)
+
 
 def NAND(inputs):
     return 1 - AND(inputs)
 
+
 def NOR(inputs):
     return 1 - OR(inputs)
+
 
 def XNOR(inputs):
     return 1 - XOR(inputs)
 
-#----------------------------
+
+# ----------------------------
 
 
-gates = [AND, OR, XOR, NAND, NOR, XNOR]
-#gates = [AND, OR, XOR] #without neg gates
+# gates = [AND, OR, XOR, NAND, NOR, XNOR]
+gates = [AND, OR, XOR]  # without neg gates
 
-#Compute entropy of the net
+
+# Compute entropy of the net
 def H(S):
-	# S: state matrix
+    # S: state matrix
     counts = np.unique(S, return_counts=True)[1]
-    p = counts/(N**2)
+    p = counts / (N**2)
     return -np.sum(p * np.log(p))
 
-#----------------------------
+
+# ----------------------------
 """
 Params and conditions
 """
-N = 500 #neuron count -> N² neurons generated
-N_iter = 50 #number of iterations
-S = np.random.choice((0,1), size = (N, N)) #init state
-fix = True #to have ε fixed
-ε_fixed = 5#if ε fixed 
-k = 2.5 #If not fixed -> used denominator -> At max ε -> N_iter/k
-Φ = np.zeros((N, N), dtype=int) #To keep track of synchronization at each neuron/ensemble
+N = 500  # neuron count -> N² neurons generated
+N_iter = 50  # number of iterations
+S = np.random.choice((0, 1), size=(N, N))  # init state (τ - 1)
+S_prev = np.copy(S)  # to keep τ - 2
+fix = True  # to have ε fixed
+ε_fixed = 5  # if ε fixed
+k = 2.5  # If not fixed -> used denominator -> At max ε -> N_iter/k
+Φ = np.zeros(
+    (N, N), dtype=int
+)  # To keep track of synchronization at each neuron/ensemble
 
 
-radius = 5.5#radius for consideration
+radius = 4  # radius for consideration
 
 """
 compare condition between Φ and ε
 If True -> Ensemble when Φ >= ε
 If False -> Ensemble when Φ == ε
 """
-geq_cond = False 
-#----------------------------
+geq_cond = False
+# ----------------------------
 
 
 # Dynamics for ε
-def dynamics(*args, fixed = False):
-    if fixed: #fixed assignment of ε
+def dynamics(*args, fixed=False):
+    if fixed:  # fixed assignment of ε
         return ε_fixed
     else:
-        return int((N_iter * (1 - H(S)))/k)
+        return int((N_iter * (1 - H(S))) / k)
 
-ε = dynamics(fixed = fix) #init ε
-        
+
+ε = dynamics(fixed=fix)  # init ε
+
 
 """
 Init plot
@@ -96,12 +107,13 @@ cbar2 = fig.colorbar(mat2, ax=ax2)
 cbar2.set_label("Synchronization Count (Φ)")
 
 
-#if to have individual gate assignment for each neuron
-#only at start doesn't update over iterations
+# if to have individual gate assignment for each neuron
+# only at start doesn't update over iterations
 gate = np.random.choice(gates, (N, N))
 
+
 def update(frame, *args):
-    global S, Φ, ε, gate
+    global S, S_prev, Φ, ε, gate
 
     print(f"Iteration {frame + 1}/{N_iter}")
 
@@ -113,13 +125,13 @@ def update(frame, *args):
         gate = np.random.choice(gates, (N, N))
     """
 
-    #------
-    #choose a gate randomly for each iteration (globally)
-    #gate = np.random.choice(gates) 
-    #------
+    # ------
+    # choose a gate randomly for each iteration (globally)
+    # gate = np.random.choice(gates)
+    # ------
     x, y = np.indices(S.shape)
     new_state = np.zeros(S.shape)
-    d_mask = np.sqrt((x - N//2)**2 + (y - N//2)**2) <= radius #distance mask 
+    d_mask = np.sqrt((x - N // 2) ** 2 + (y - N // 2) ** 2) <= radius  # distance mask
 
     """ vectorized code (gets process killed) -> Creating array with N⁴ elements!
     # Can't precompute the masks' shifting
@@ -130,33 +142,39 @@ def update(frame, *args):
     new_state = np.array([[gate[i, j](S[d_mask_shift[i, j]]) for j in range(N)] for i in range(N)])
     """
 
-    #state update (non-vectorized)
+    # state update (non-vectorized)
     for i in range(N):
         for j in range(N):
-            mask = np.roll(np.roll(d_mask, i - N//2, axis=0), j - N//2, axis=1)
+            mask = np.roll(np.roll(d_mask, i - N // 2, axis=0), j - N // 2, axis=1)
             new_state[i, j] = gate[i, j](S[mask])
 
-    sync = (new_state == S)
-    
+    sync = (new_state == S) & (new_state == S_prev)
+
     Φ = np.where(sync, Φ + 1, 0)
 
     mask_ensemble = Φ >= ε if geq_cond else Φ == ε
-    ε = dynamics(fixed = fix)
-    S = new_state #update state
+    ε = dynamics(fixed=fix)
+    S_prev = np.copy(S)
+    S = new_state  # update state
     # update given any ensemble formation
     if np.any(mask_ensemble):
         ensemble_idxs = np.argwhere(mask_ensemble)
         for i, j in ensemble_idxs:
-        	#update neighbors given central neuron forming ensemble
-            S[np.roll(np.roll(d_mask, i - N//2, axis = 0), j - N//2, axis = 1)] = S[i, j]
+            # update neighbors given central neuron forming ensemble
+            S[np.roll(np.roll(d_mask, i - N // 2, axis=0), j - N // 2, axis=1)] = S[
+                i, j
+            ]
 
     mat1.set_array(S)
     mat2.set_array(Φ)
 
-    ax1.set_title(f"Threshold (ε): {ε}; Fixed (k: {k if not fix else None}): {fix}; Φ $\geq$ ε: {geq_cond}, R: {radius}")
+    ax1.set_title(
+        f"Threshold (ε): {ε}; Fixed (k: {k if not fix else None}): {fix}; Φ $\geq$ ε: {geq_cond}, R: {radius}"
+    )
     return mat1, mat2
+
 
 ani = FuncAnimation(fig, update, frames=N_iter, interval=1000)
 ani.save("autopoietic_net.gif", writer="pillow", fps=10)
 print("Finished!")
-#plt.show()
+# plt.show()
